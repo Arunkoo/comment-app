@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15
+    restart: always
+    ports:
+      - '5432:5432'
+    environment:
+      POSTGRES_USER: nest
+      POSTGRES_PASSWORD: nestpass
+      POSTGRES_DB: commentdb
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  app:
+    build: .
+    ports:
+      - '3000:3000'
+    depends_on:
+      - postgres
+    environment:
+      DATABASE_URL: postgresql://nest:nestpass@postgres:5432/commentdb
+      JWT_SECRET: supersecretkey
+    volumes:
+      - .:/app
+
+volumes:
+  pgdata:
