@@ -7,10 +7,29 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-//user schema...
 model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
+  id        String    @id @default(uuid())
+  email     String    @unique
   password  String
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
+
+  comments  Comment[] // one-to-many relation with Comment
 }
+
+model Comment {
+  id         String     @id @default(uuid())
+  text       String
+
+  user       User       @relation(fields: [userId], references: [id])
+  userId     String     // foreign key for User
+
+  parent     Comment?   @relation("ParentChild", fields: [parentId], references: [id])   //here i m saying that each comment can have parent in same table..
+  parentId   String?    // nullable: top-level comment has no parent
+
+  children   Comment[]  @relation("ParentChild") // self-relation for nested replies
+
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+  deletedAt  DateTime?  // if null → not deleted; if set → soft-deleted
+}
+
