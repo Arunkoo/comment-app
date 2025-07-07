@@ -14,16 +14,36 @@ services:
       - pgdata:/var/lib/postgresql/data
 
   app:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     ports:
       - '3000:3000'
+    working_dir: /app
+    volumes:
+      - .:/app
+      - /app/frontend # 👈 IGNORE frontend folder in backend container
     depends_on:
       - postgres
     environment:
       DATABASE_URL: postgresql://nest:nestpass@postgres:5432/commentdb
       JWT_SECRET: supersecretkey
+    command: npm run start:dev
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - '5173:5173'
+    working_dir: /app
     volumes:
-      - .:/app
+      - ./frontend:/app
+    environment:
+      - NODE_ENV=development
+    command: sh -c "npm install && npm run dev"
+    depends_on:
+      - app
 
 volumes:
   pgdata:

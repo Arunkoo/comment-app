@@ -8,6 +8,7 @@ import {
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateCommentDto } from './dto/create-comment.dto';
 import { User } from '@prisma/client';
+
 type CommentNode = {
   id: string;
   text: string;
@@ -17,31 +18,55 @@ type CommentNode = {
   updatedAt: Date;
   deletedAt: Date | null;
 };
+
+type ParentCommentInfo = {
+  id: string;
+  userId: string;
+};
+
 @Injectable()
 export class CommentService {
   constructor(private prisma: PrismaService) {}
 
   async createComment(dto: CreateCommentDto, user: User) {
+    let parent: ParentCommentInfo | null = null;
+
     if (dto.parentId) {
-      const parent = await this.prisma.comment.findUnique({
+      parent = await this.prisma.comment.findUnique({
         where: { id: dto.parentId },
+        select: {
+          id: true,
+          userId: true,
+        },
       });
 
       if (!parent) throw new NotFoundException('Parent comment not found');
     }
 
-    return this.prisma.comment.create({
+    const newComment = await this.prisma.comment.create({
       data: {
         text: dto.text,
         parentId: dto.parentId,
         userId: user.id,
       },
     });
+
+    // Notify parent commenter, but skip self-replies
+    if (parent && parent.userId !== user.id) {
+      await this.prisma.notification.create({
+        data: {
+          userId: parent.userId,
+          commentId: newComment.id,
+          message: `${user.email} replied to your comment.`,
+        },
+      });
+    }
+
+    return newComment;
   }
 
   async getAllNestedComments(): Promise<any[]> {
     try {
-      //fetching top level comment..
       const topLevelComments = await this.prisma.comment.findMany({
         where: { parentId: null, deletedAt: null },
         orderBy: { createdAt: 'desc' },
@@ -56,7 +81,6 @@ export class CommentService {
         },
       });
 
-      //recursively building children tree..
       return await Promise.all(
         topLevelComments.map((comment) => this.buildNestedTree(comment)),
       );
@@ -65,10 +89,8 @@ export class CommentService {
       throw new InternalServerErrorException('Failed to fetch comments');
     }
   }
-  //helper function...
-  private async buildNestedTree(comment: CommentNode): Promise<any> {
-    //fetch direct children..
 
+  private async buildNestedTree(comment: CommentNode): Promise<any> {
     const children = await this.prisma.comment.findMany({
       where: { parentId: comment.id, deletedAt: null },
       orderBy: { createdAt: 'asc' },
@@ -97,7 +119,6 @@ export class CommentService {
     };
   }
 
-  // soft delete functionality  means only undo till 15 min after 15min no  backup permanent delete..
   async softDeleteComment(commentId: string, user: User) {
     const comment = await this.prisma.comment.findUnique({
       where: { id: commentId },
@@ -106,7 +127,7 @@ export class CommentService {
     if (!comment) throw new NotFoundException('Comment not found');
 
     if (comment.userId !== user.id)
-      throw new ForbiddenException('you can only delete your own comments');
+      throw new ForbiddenException('You can only delete your own comments');
 
     return this.prisma.comment.update({
       where: { id: commentId },
@@ -114,25 +135,23 @@ export class CommentService {
     });
   }
 
-  //restore the comment...
   async restoreComment(id: string, user: User) {
     const comment = await this.prisma.comment.findUnique({ where: { id } });
 
-    if (!comment) throw new NotFoundException('comment not found');
+    if (!comment) throw new NotFoundException('Comment not found');
     if (comment.userId !== user.id)
       throw new ForbiddenException('Not your comment');
     if (!comment.deletedAt)
-      throw new BadRequestException('comment is not deleted');
+      throw new BadRequestException('Comment is not deleted');
 
-    //main logic...
     const deletedAt = new Date(comment.deletedAt);
     const now = new Date();
-    const diffInMs = now.getTime() - deletedAt.getTime();
-    const diffInMinutes = diffInMs / (1000 * 60);
+    const diffInMinutes = (now.getTime() - deletedAt.getTime()) / (1000 * 60);
 
     if (diffInMinutes > 15) {
       throw new BadRequestException('Restore window expired');
     }
+
     return this.prisma.comment.update({
       where: { id },
       data: { deletedAt: null },

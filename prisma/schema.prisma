@@ -1,5 +1,6 @@
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {
@@ -14,6 +15,7 @@ model User {
   createdAt DateTime  @default(now())
 
   comments  Comment[] // one-to-many relation with Comment
+  notifications Notification[]
 }
 
 model Comment {
@@ -31,5 +33,20 @@ model Comment {
   createdAt  DateTime   @default(now())
   updatedAt  DateTime   @updatedAt
   deletedAt  DateTime?  // if null → not deleted; if set → soft-deleted
+  notification Notification[]
 }
+
+model Notification {
+  id        String   @id @default(uuid())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+
+  comment   Comment  @relation(fields: [commentId], references: [id])
+  commentId String
+
+  message   String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
 
